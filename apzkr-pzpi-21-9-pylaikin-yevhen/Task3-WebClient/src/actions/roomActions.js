@@ -96,6 +96,16 @@ export const roomActions = () => {
         }
     };
 
+    const getLatestRoomData = async (roomId) => {
+        try {
+            const response = await axios.get(`/api/admin/rooms/${roomId}/latest_data`);
+            return response.data;
+        } catch (error) {
+            console.error('Помилка при отриманні останніх даних кімнати:', error);
+            throw error;
+        }
+    };
+
     return {
         fetchRooms,
         deleteRoom,
@@ -104,6 +114,7 @@ export const roomActions = () => {
         fetchRoomDevices,
         getAllStatistics,
         getRoomStatistics,
-        exportMeasurements
+        exportMeasurements,
+        getLatestRoomData
     };
 };

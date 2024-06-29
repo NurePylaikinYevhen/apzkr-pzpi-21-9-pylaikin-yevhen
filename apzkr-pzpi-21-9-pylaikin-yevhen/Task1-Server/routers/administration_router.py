@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from get_db import get_db
 from models.esp import Device
 from models.room import Room
-from services import room_service, device_service, config_service, user_service
+from services import room_service, device_service, config_service, user_service, analytics_service
 from sсhemas.config import ConfigUpdate
 from sсhemas.device import DeviceCreate
 from sсhemas.room import RoomCreate
@@ -277,3 +277,15 @@ def get_users(
         current_user: User = Depends(get_current_admin)
 ):
     return user_service.get_all_users(db)
+
+@administration_router.get("/rooms/{room_id}/latest_data")
+async def get_room_latest_data_route(
+        room_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_manager_or_admin)
+):
+    try:
+        room_data = analytics_service.get_room_latest_data(db, room_id)
+        return room_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

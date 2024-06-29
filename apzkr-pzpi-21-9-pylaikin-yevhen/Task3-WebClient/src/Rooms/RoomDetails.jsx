@@ -17,6 +17,7 @@ import {DateTimePicker} from "@mui/x-date-pickers/DateTimePicker";
 import StatisticsCard from "../components/StatisticCard";
 import {LocalizationProvider} from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFnsV3';
+import ProductivityDashboard from "../components/ProductivityDashboard";
 
 const RoomDetails = () => {
     const { id } = useParams();
@@ -32,20 +33,25 @@ const RoomDetails = () => {
     const [timeTo, setTimeTo] = useState(new Date());
     const [statistics, setStatistics] = useState(null);
     const [loadingStatistics, setLoadingStatistics] = useState(false);
+    const [productivityData, setProductivityData] = useState(null);
 
     const navigate = useNavigate();
     const { logout } = useAuth();
-    const { fetchRoomDevices, getRoomStatistics } = roomActions();
+    const { fetchRoomDevices, getRoomStatistics, fetchRoomDetails, getLatestRoomData } = roomActions();
     const { exportConfig, importConfig, updateDeviceConfig } = configActions();
 
     const fetchRoomData = useCallback(async () => {
         try {
             setLoading(true);
-            const devicesData = await fetchRoomDevices(id);
+            const [devicesData, latestData] = await Promise.all([
+                fetchRoomDevices(id),
+                getLatestRoomData(id)
+            ]);
             setDevices(devicesData);
+            setProductivityData(latestData);
             setError(null);
         } catch (error) {
-            console.error('Помилка при завантаженні кімнати:', error);
+            console.error('Помилка при завантаженні даних кімнати:', error);
             if (error.response && error.response.status === 401) {
                 logout();
                 navigate('/login');
@@ -55,13 +61,13 @@ const RoomDetails = () => {
         } finally {
             setLoading(false);
         }
-    }, [id, fetchRoomDevices, logout, navigate]);
+    }, [id, fetchRoomDevices, fetchRoomDetails, getLatestRoomData, logout, navigate]);
 
     useEffect(() => {
         fetchRoomData();
     }, [id]);
 
-    const loadStatictics = async () => {
+    const loadStatistics = async () => {
         try {
             setLoadingStatistics(true);
             const response = await getRoomStatistics(id, timeFrom, timeTo);
@@ -217,7 +223,7 @@ const RoomDetails = () => {
     return (
         <LocalizationProvider dateAdapter={AdapterDateFns}>
             <Box sx={{ p: 3 }}>
-                <Paper elevation={3} sx={{ p: 3 }}>
+                <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                         <Typography variant="h4">Кімната: {id}</Typography>
                         <Box>
@@ -238,67 +244,119 @@ const RoomDetails = () => {
                             </Tooltip>
                         </Box>
                     </Box>
-                    <Divider sx={{ my: 2 }} />
-                    <Typography variant="h6" gutterBottom>Пристрої та вимірювання:</Typography>
-                    {devices.map((device) => (
-                        <Box key={device.id} sx={{ mb: 4 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                <Typography variant="subtitle1">
-                                    Device ID: {device.id}, MAC: {device.mac_address}
-                                </Typography>
-                                <Box>
-                                    <Tooltip title="Експорт конфігурації">
-                                        <IconButton onClick={() => handleExportConfig(device.id)}>
-                                            <CloudDownloadIcon />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Імпорт конфігурації">
-                                        <IconButton component="label">
-                                            <CloudUploadIcon />
-                                            <input
-                                                type="file"
-                                                hidden
-                                                onChange={(e) => handleImportConfig(device.id, e)}
-                                            />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Редагувати конфігурацію">
-                                        <IconButton onClick={() => handleOpenConfigDialog(device.id)}>
-                                            <EditIcon />
-                                        </IconButton>
-                                    </Tooltip>
-                                </Box>
-                            </Box>
-                            {device.measurements.length > 0 ? (
-                                <TableContainer component={Paper} sx={{ mt: 2, mb: 4 }}>                                    <Table size="small">
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Час</TableCell>
-                                                <TableCell align="right">Температура (°C)</TableCell>
-                                                <TableCell align="right">Вологість (%)</TableCell>
-                                                <TableCell align="right">CO2 (ppm)</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {device.measurements.map((measurement) => (
-                                                <TableRow key={measurement.id}>
-                                                    <TableCell component="th" scope="row">
-                                                        {new Date(measurement.timestamp).toLocaleString()}
-                                                    </TableCell>
-                                                    <TableCell align="right">{measurement.temperature}</TableCell>
-                                                    <TableCell align="right">{measurement.humidity}</TableCell>
-                                                    <TableCell align="right">{measurement.co2}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            ) : (
-                                <Typography>Немає вимірювань для цього пристрою.</Typography>
-                            )}
-                        </Box>
-                    ))}
+                    {productivityData && <ProductivityDashboard data={productivityData} />}
                 </Paper>
+
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom>Пристрої та вимірювання:</Typography>
+                {devices.map((device) => (
+                    <Box key={device.id} sx={{ mb: 4 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                            <Typography variant="subtitle1">
+                                Device ID: {device.id}, MAC: {device.mac_address}
+                            </Typography>
+                            <Box>
+                                <Tooltip title="Експорт конфігурації">
+                                    <IconButton onClick={() => handleExportConfig(device.id)}>
+                                        <CloudDownloadIcon />
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Імпорт конфігурації">
+                                    <IconButton component="label">
+                                        <CloudUploadIcon />
+                                        <input
+                                            type="file"
+                                            hidden
+                                            onChange={(e) => handleImportConfig(device.id, e)}
+                                        />
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Редагувати конфігурацію">
+                                    <IconButton onClick={() => handleOpenConfigDialog(device.id)}>
+                                        <EditIcon />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
+                        </Box>
+                        {device.measurements.length > 0 ? (
+                            <TableContainer component={Paper} sx={{ mt: 2, mb: 4 }}>
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>Час</TableCell>
+                                            <TableCell align="right">Температура (°C)</TableCell>
+                                            <TableCell align="right">Вологість (%)</TableCell>
+                                            <TableCell align="right">CO2 (ppm)</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {device.measurements.map((measurement) => (
+                                            <TableRow key={measurement.id}>
+                                                <TableCell component="th" scope="row">
+                                                    {new Date(measurement.timestamp).toLocaleString()}
+                                                </TableCell>
+                                                <TableCell align="right">{measurement.temperature}</TableCell>
+                                                <TableCell align="right">{measurement.humidity}</TableCell>
+                                                <TableCell align="right">{measurement.co2}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        ) : (
+                            <Typography>Немає вимірювань для цього пристрою.</Typography>
+                        )}
+                    </Box>
+                ))}
+
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 3 }}>
+                    <Grid container spacing={2} justifyContent="center" alignItems="center">
+                        <Grid item>
+                            <DateTimePicker
+                                label="Від"
+                                value={timeFrom}
+                                onChange={setTimeFrom}
+                                renderInput={(params) => <TextField {...params} />}
+                            />
+                        </Grid>
+                        <Grid item>
+                            <DateTimePicker
+                                label="До"
+                                value={timeTo}
+                                onChange={setTimeTo}
+                                renderInput={(params) => <TextField {...params} />}
+                            />
+                        </Grid>
+                        <Grid item>
+                            <Button
+                                variant="contained"
+                                onClick={loadStatistics}
+                                disabled={loadingStatistics}
+                            >
+                                {loadingStatistics ? 'Завантаження...' : 'Отримати статистику'}
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Box>
+
+                {loadingStatistics && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                        <CircularProgress />
+                    </Box>
+                )}
+
+                {statistics && (
+                    <Grid container spacing={3}>
+                        {statistics.map((stat, index) => (
+                            <Grid item xs={12} sm={6} md={4} key={index}>
+                                <StatisticsCard
+                                    title={`Статистика для ${stat.device_id}`}
+                                    data={stat}
+                                />
+                            </Grid>
+                        ))}
+                    </Grid>
+                )}
 
                 <Dialog open={openConfigDialog} onClose={handleCloseConfigDialog} maxWidth="md" fullWidth>
                     <DialogTitle>Редагування конфігурації пристрою {currentDeviceId}</DialogTitle>
@@ -332,54 +390,6 @@ const RoomDetails = () => {
                         {successMessage}
                     </Alert>
                 </Snackbar>
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4, mb: 3 }}>
-                    <Grid container spacing={2} justifyContent="center" alignItems="center">
-                        <Grid item>
-                            <DateTimePicker
-                                label="Від"
-                                value={timeFrom}
-                                onChange={setTimeFrom}
-                                renderInput={(params) => <TextField {...params} />}
-                            />
-                        </Grid>
-                        <Grid item>
-                            <DateTimePicker
-                                label="До"
-                                value={timeTo}
-                                onChange={setTimeTo}
-                                renderInput={(params) => <TextField {...params} />}
-                            />
-                        </Grid>
-                        <Grid item>
-                            <Button
-                                variant="contained"
-                                onClick={loadStatictics}
-                                disabled={loadingStatistics}
-                            >
-                                {loadingStatistics ? 'Завантаження...' : 'Отримати статистику'}
-                            </Button>
-                        </Grid>
-                    </Grid>
-                </Box>
-
-                {loadingStatistics && (
-                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <CircularProgress />
-                    </Box>
-                )}
-
-                {statistics && (
-                    <Grid container spacing={3}>
-                        {statistics.map((stat, index) => (
-                            <Grid item xs={12} sm={6} md={4} key={index}>
-                                <StatisticsCard
-                                    title={`Статистика для ${stat.device_id}`}
-                                    data={stat}
-                                />
-                            </Grid>
-                        ))}
-                    </Grid>
-                )}
             </Box>
         </LocalizationProvider>
     );

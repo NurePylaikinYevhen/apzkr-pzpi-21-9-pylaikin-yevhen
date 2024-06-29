@@ -1,6 +1,6 @@
 import math
 from datetime import datetime
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 
 import numpy as np
 import pandas as pd
@@ -79,7 +79,8 @@ def calculate_productivity(temperature, humidity, co2, config):
     return round(overall_score)
 
 
-def calculate_prediction(db: Session, device_id: int, temperature: float, humidity: float, co2: float) -> Tuple[float, List[str]]:
+def calculate_and_save_prediction(db: Session, device_id: int, temperature: float, humidity: float,
+                                  co2: float) -> float:
     config = get_device_config(db, device_id)
     prediction = calculate_productivity(temperature, humidity, co2, config)
 
@@ -94,9 +95,15 @@ def calculate_prediction(db: Session, device_id: int, temperature: float, humidi
     db.add(new_measurement)
     db.commit()
 
+    return prediction
+
+
+def generate_recommendations(db: Session, device_id: int, temperature: float, humidity: float, co2: float,
+                             prediction: float) -> List[str]:
+    config = get_device_config(db, device_id)
     recommendations = []
+
     if prediction < config.get('productivity_norm', 80):
-        recommendations.append(f"Ваша продуктивність може бути занадто низькою, близько {prediction}%.")
 
         temp_ideal = config['ideal_values']['Temperature']
         if abs(temperature - temp_ideal) > 2:
@@ -112,7 +119,109 @@ def calculate_prediction(db: Session, device_id: int, temperature: float, humidi
         if co2 > co2_ideal + 100:
             recommendations.append(f"Рекомендується зменшити рівень CO2 ближче до {co2_ideal} ppm.")
 
+    return recommendations
+
+
+def calculate_prediction(db: Session, device_id: int, temperature: float, humidity: float, co2: float) -> Tuple[
+    float, List[str]]:
+    prediction = calculate_and_save_prediction(db, device_id, temperature, humidity, co2)
+    recommendations = generate_recommendations(db, device_id, temperature, humidity, co2, prediction)
     return prediction, recommendations
+
+
+def get_latest_measurement_with_productivity(db: Session, device_id: int) -> Optional[Dict[str, Any]]:
+    latest_measurement = db.query(Measurement).filter(Measurement.device_id == device_id).order_by(
+        Measurement.timestamp.desc()).first()
+    if not latest_measurement:
+        return None
+    return {
+        "timestamp": latest_measurement.timestamp,
+        "temperature": latest_measurement.temperature,
+        "humidity": latest_measurement.humidity,
+        "co2": latest_measurement.co2,
+        "productivity": latest_measurement.productivity
+    }
+
+
+def get_room_latest_measurements(db: Session, room_id: int) -> List[Dict[str, Any]]:
+    devices = db.query(Device).filter(Device.room_id == room_id).all()
+    latest_measurements = []
+    for device in devices:
+        measurement = get_latest_measurement_with_productivity(db, device.id)
+        if measurement:
+            latest_measurements.append({
+                "device_id": device.id,
+                "mac_address": device.mac_address,
+                **measurement
+            })
+    return latest_measurements
+
+
+def get_latest_productivity_and_recommendations(db: Session, room_id: int) -> Dict[str, Any]:
+    devices = db.query(Device).filter(Device.room_id == room_id).all()
+    latest_data = []
+
+    for device in devices:
+        latest_measurement = get_latest_measurement_with_productivity(db, device.id)
+        if latest_measurement:
+            config = get_device_config(db, device.id)
+            recommendations = generate_recommendations(db, device.id, latest_measurement['temperature'],
+                                                       latest_measurement['humidity'], latest_measurement['co2'],
+                                                       latest_measurement['productivity'])
+            latest_data.append({
+                "device_id": device.id,
+                "productivity": latest_measurement['productivity'],
+                "recommendations": recommendations
+            })
+
+    if not latest_data:
+        return {"average_productivity": 0, "recommendations": []}
+
+    avg_productivity = sum(data['productivity'] for data in latest_data) / len(latest_data)
+    all_recommendations = list(set(rec for data in latest_data for rec in data['recommendations']))
+
+    return {
+        "average_productivity": avg_productivity,
+        "recommendations": all_recommendations
+    }
+
+
+def get_room_latest_data(db: Session, room_id: int) -> Dict[str, Any]:
+    devices = db.query(Device).filter(Device.room_id == room_id).all()
+    devices_data = []
+    total_productivity = 0
+    all_recommendations = set()
+
+    for device in devices:
+        measurement = get_latest_measurement_with_productivity(db, device.id)
+        if measurement:
+            config = get_device_config(db, device.id)
+            recommendations = generate_recommendations(
+                db, device.id,
+                measurement['temperature'],
+                measurement['humidity'],
+                measurement['co2'],
+                measurement['productivity']
+            )
+
+            device_data = {
+                "device_id": device.id,
+                "mac_address": device.mac_address,
+                **measurement,
+                "recommendations": recommendations
+            }
+            devices_data.append(device_data)
+            total_productivity += measurement['productivity']
+            all_recommendations.update(recommendations)
+
+    num_devices = len(devices_data)
+    average_productivity = total_productivity / num_devices if num_devices > 0 else 0
+
+    return {
+        "average_productivity": average_productivity,
+        "devices_data": devices_data,
+        "overall_recommendations": list(all_recommendations)
+    }
 
 
 def clean_float(value):

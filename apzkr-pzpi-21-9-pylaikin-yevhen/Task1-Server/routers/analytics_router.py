@@ -46,10 +46,10 @@ async def get_room_statistics(input_data: RoomStatisticsInput, db: Session = Dep
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@analytics_router.post("/record_environment")
-def record_environment(input_data: EnvironmentDataInput, db: Session = Depends(get_db)):
-    try:
-        response = analytics_service.record_environment_data(db, input_data)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+#@analytics_router.post("/record_environment")
+#def record_environment(input_data: EnvironmentDataInput, db: Session = Depends(get_db)):
+#    try:
+#        response = analytics_service.record_environment_data(db, input_data)
+#        return response
+#   except Exception as e:
+#        raise HTTPException(status_code=400, detail=str(e))
