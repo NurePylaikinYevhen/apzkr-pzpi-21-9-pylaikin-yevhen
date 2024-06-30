@@ -2,10 +2,10 @@ import asyncio
 from typing import Optional
 import signal
 
+from ServerCommunicator import ServerCommunicator
+from DHT22Simulator import DHT22Simulator
+from MHZ19Simulator import MHZ19Simulator
 from ServerCommunicator import DeviceConfig
-from Task3.DHT22Simulator import DHT22Simulator
-from Task3.MHZ19Simulator import MHZ19Simulator
-from Task3.ServerCommunicator import ServerCommunicator
 
 DEFAULT_CONFIG = {
     "interval": 30,
@@ -83,9 +83,11 @@ class ESP32Simulator:
     def stop(self):
         self.running = False
 
+
 async def run_simulator(server_url: str, mac_address: str):
     simulator = ESP32Simulator(server_url, mac_address)
     await simulator.run()
+
 
 async def main():
     server_url = "http://localhost:5000/api"
@@ -110,6 +112,7 @@ async def main():
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:
         pass
+
 
 if __name__ == "__main__":
     asyncio.run(main())
